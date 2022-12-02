@@ -1,0 +1,87 @@
+version: 2.1
+
+# --- Anchor alias ---- #
+alias:
+# ---- Jobs filters ---- #
+  - &filters_only_dev
+    branches:
+      only: dev
+    tags:
+      ignore: /.*/
+  - &filters_only_branch
+    branches:
+      ignore:
+        - dev
+    tags:
+      ignore: /.*/
+  - &filters_only_tags
+    branches:
+      ignore: /.*/
+    tags:
+      only: /^v.*/
+
+# --- END --- #
+# --------------------------------------------------- #
+# -------------- DEFINE YOUR WORKFLOW --------------- #
+# --------------------------------------------------- #
+orbs:
+  go: habx/golang@0.8.0
+  docker: circleci/docker@2.0.3
+
+docker-config: &docker-config
+  extra_build_args: --build-arg REVISION="$(git rev-parse --short HEAD)" --build-arg CREATED="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" --build-arg VERSION="$CIRCLE_TAG" --build-arg TITLE="${CIRCLE_PROJECT_REPONAME}" --build-arg SOURCE="${CIRCLE_REPOSITORY_URL}" --build-arg AUTHORS="${CIRCLE_USERNAME}"
+  image: habx/${CIRCLE_PROJECT_REPONAME}
+  tag: $CIRCLE_TAG
+  attach-at: ~/project
+
+workflows:
+  tests:
+    jobs:
+      - go/static-tests:
+          github-config-private-package: false
+          filters:
+            <<: *filters_only_branch
+      - go/tests-localstack-and-pg:
+          github-config-private-package: false
+          filters:
+            <<: *filters_only_branch
+      - go/build:
+          github-config-private-package: false
+          dry-run-release: true
+          requires:
+            - go/static-tests
+            - go/tests-localstack-and-pg
+          filters:
+            <<: *filters_only_branch
+
+  dev:
+    jobs:
+      - go/build:
+          github-config-private-package: false
+          dry-run-release: true
+          filters:
+            <<: *filters_only_dev
+      - docker/publish:
+          deploy: false
+          <<: *docker-config
+          filters:
+            <<: *filters_only_dev
+          requires:
+            - go/build
+
+  release:
+    jobs:
+      - go/build:
+          context: go_public
+          github-config-private-package: false
+          dry-run-release: false
+          filters:
+            <<: *filters_only_tags
+      - docker/publish:
+          context: go_public
+          deploy: true
+          <<: *docker-config
+          filters:
+            <<: *filters_only_tags
+          requires:
+            - go/build

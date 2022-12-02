@@ -1,0 +1,4 @@
+*.priv.yaml
+__*
+tool-*
+.DS_Store
