@@ -1,11 +1,27 @@
 # Why
 
-This tool softly cordons and drains kubernetes nodes for you. It avoids:
+This tool softly cordons and drains Kubernetes nodes for you. It avoids:
 - Setting a replica=2 and a [PDB](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/) for all deployments 
   (which is expensive and not always possible) and stateful sets.
 - Manually terminating pods with ReadWriteOnce volumes (which requires human intervention)
 
 # How to use it
+
+```
+Usage of ./k8s-nodes-cleaner:
+  -confirm
+        Request to confirm before applying changes
+  -delete-nodes
+        Delete after cleaning them
+  -delete-pods-with-pv
+        Delete pods that will most probably stay stuck
+  -node-label value
+        Node target label
+  -node-version string
+        Kubelet version to target
+  -patch-id string
+        Patch ID (default "2022-12-12")
+```
 
 To remove all nodes that have the `kill=me` label set, you can execute the following command:
 ```bash
@@ -37,4 +53,4 @@ no limit to how much time it waits for a node to lose all its pods.
 
 ## Is inefficient
 In the cluster upgrade process, many pods of the same deployment move to different nodes. To avoid this limitation,
-we would probably need to cordon more nodes at once.
+we would probably need to cordon more than 1 node at once.

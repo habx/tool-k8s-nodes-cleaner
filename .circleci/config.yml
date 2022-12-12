@@ -25,8 +25,8 @@ alias:
 # -------------- DEFINE YOUR WORKFLOW --------------- #
 # --------------------------------------------------- #
 orbs:
-  go: habx/golang@0.8.0
-  docker: circleci/docker@2.0.3
+  go: habx/golang@0.14.0
+  docker: circleci/docker@2.2.0
 
 docker-config: &docker-config
   extra_build_args: --build-arg REVISION="$(git rev-parse --short HEAD)" --build-arg CREATED="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" --build-arg VERSION="$CIRCLE_TAG" --build-arg TITLE="${CIRCLE_PROJECT_REPONAME}" --build-arg SOURCE="${CIRCLE_REPOSITORY_URL}" --build-arg AUTHORS="${CIRCLE_USERNAME}"
