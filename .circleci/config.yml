@@ -25,7 +25,7 @@ alias:
 # -------------- DEFINE YOUR WORKFLOW --------------- #
 # --------------------------------------------------- #
 orbs:
-  go: habx/golang@0.8.0
+  go: habx/golang@0.14.0
   docker: circleci/docker@2.0.5
 
 docker-config: &docker-config
