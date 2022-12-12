@@ -20,7 +20,7 @@ func (i *arrayFlags) Set(value string) error {
 
 type config struct {
 	deleteNode               bool // If node should be deleted in the end
-	deletePodsWithPv         bool // If pods with PersistentVolume should be deleted forcelly
+	deletePodsWithPV         bool // If pods with PersistentVolume should be deleted forcelly
 	confirm                  bool // Confirm the change execution
 	patchID                  string
 	nodeCordonKubeletVersion string
@@ -31,7 +31,7 @@ func (c *config) Parse() {
 	todaysDate := time.Now().Format("2006-01-02")
 
 	flag.BoolVar(&c.deleteNode, "delete-nodes", false, "Delete after cleaning them")
-	flag.BoolVar(&c.deletePodsWithPv, "delete-pods-with-pv", false, "Delete pods that will most probably stay stuck")
+	flag.BoolVar(&c.deletePodsWithPV, "delete-pods-with-pv", false, "Delete pods with persistent volumes")
 	flag.BoolVar(&c.confirm, "confirm", false, "Request to confirm before applying changes")
 	flag.StringVar(&c.patchID, "patch-id", todaysDate, "Patch ID")
 	flag.StringVar(&c.nodeCordonKubeletVersion, "node-version", "", "Kubelet version to target")

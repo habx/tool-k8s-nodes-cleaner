@@ -82,23 +82,11 @@ func (app *app) processKindReplicaSet(log *zap.SugaredLogger, pod *v1.Pod, or *m
 		metav1.PatchOptions{},
 	)
 
-	// https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes
-	if app.config.deletePodsWithPv {
-		if shouldDeletePod, err := app.willPvcWillBlockNextPodCreation(pod); err == nil && shouldDeletePod {
-			// We could also check that there's an other pod in a "ContainerCreating" status in the same replicaset so that
-			// we cause minimal disruption.
-			log.Warnw("Deleting pod !!!")
-
-			app.confirm()
-
-			if err := app.client.CoreV1().Pods(pod.Namespace).Delete(
-				context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
-				log.Errorw("Couldn't delete pod", "err", err)
-			}
-		}
+	if err != nil {
+		return fmt.Errorf("couldn't patch ReplicaSet %s: %w", or.Name, err)
 	}
 
-	return fmt.Errorf("couldn't patch ReplicaSet %s: %w", or.Name, err)
+	return nil
 }
 
 func (app *app) processKindStatefulSet(log *zap.SugaredLogger, pod *v1.Pod, or *metav1.OwnerReference) error {
@@ -113,7 +101,32 @@ func (app *app) processKindStatefulSet(log *zap.SugaredLogger, pod *v1.Pod, or *
 		metav1.PatchOptions{},
 	)
 
-	return fmt.Errorf("couldn't patch StatefulSet %s: %w", or.Name, err)
+	if err != nil {
+		return fmt.Errorf("couldn't patch StatefulSet %s: %w", or.Name, err)
+	}
+
+	return nil
+}
+
+func (app *app) processPodWithPV(log *zap.SugaredLogger, pod *v1.Pod) (bool, error) {
+	if shouldDeletePod, err := app.willPvcWillBlockNextPodCreation(pod); err == nil && shouldDeletePod {
+		// We could also check that there's an other pod in a "ContainerCreating" status in the same replicaset so that
+		// we cause minimal disruption.
+		log.Warnw("Deleting pod !!!")
+
+		app.confirm()
+
+		if err := app.client.CoreV1().Pods(pod.Namespace).Delete(
+			context.TODO(), pod.Name, metav1.DeleteOptions{}); err != nil {
+			log.Errorw("Couldn't delete pod", "err", err)
+
+			return true, fmt.Errorf("couldn't delete pod %s: %w", pod.Name, err)
+		}
+
+		return true, nil
+	}
+
+	return true, nil
 }
 
 // ProcessPod tries to change the owner of the pod
@@ -128,32 +141,47 @@ func (app *app) processPod(pod *v1.Pod) (bool, error) {
 
 	for _, o := range pod.ObjectMeta.OwnerReferences {
 		ownerRef := o
+
+		var err error
+
 		switch ownerRef.Kind {
 		case "ReplicaSet":
-			return true, app.processKindReplicaSet(log, pod, &ownerRef)
+			err = app.processKindReplicaSet(log, pod, &ownerRef)
 		case "StatefulSet":
-			return true, app.processKindStatefulSet(log, pod, &ownerRef)
+			err = app.processKindStatefulSet(log, pod, &ownerRef)
 		case "DaemonSet":
 			{
 				// We could evict the pods here but it will probably lead to undesired behavior, if we do it we should
 				// do it *after* the pods not belonging to a daemonset have been dropped.
 				log.Info("Ignoring because it's a daemonset")
+
+				return false, nil
 			}
 		default:
 			{
 				log.Warn("Unknown owner type", "kind", ownerRef.Kind)
 
-				// We'll wait for the pods because if this happens,
-				// we're probably missing something and it's better to wait forever in this case.
+				// If we don't know the owner type, we can't safely do anything, so we'll just
+				// wait like this forever. This is either a bug in the code or something a human
+				// must handle.
 				return true, nil
 			}
 		}
+
+		if err != nil {
+			return true, err
+		}
 	}
 
-	return false, nil
+	// https://kubernetes.io/docs/concepts/storage/persistent-volumes/#access-modes
+	if app.config.deletePodsWithPV {
+		return app.processPodWithPV(log, pod)
+	}
+
+	return true, nil
 }
 
-const timeWaitingForPods = 10 * time.Second
+const timeWaitingForPods = 20 * time.Second
 
 func (app *app) waitForPods(podsToWaitFor []v1.Pod, nodeName string) {
 	log := app.log.With("nodeName", nodeName)
@@ -224,7 +252,7 @@ func (app *app) movePodsFromNode(node *v1.Node) (int, error) {
 	for _, p := range podsList.Items {
 		pod := p // To avoid the loop variable being reused elsewhere (implicit memory aliasing)
 		if result, err := app.processPod(&pod); err != nil {
-			log.Warnw("Couldn't list pod", "err", err)
+			log.Warnw("Couldn't process pod", "err", err)
 		} else if result {
 			podsToWaitFor = append(podsToWaitFor, pod)
 		}
@@ -241,15 +269,17 @@ func (app *app) cordonNode(node *v1.Node) error {
 	log.Infow("Cordoning node", "nodeName", node.Name)
 	app.confirm()
 
-	_, err := app.client.CoreV1().Nodes().Patch(
+	if _, err := app.client.CoreV1().Nodes().Patch(
 		context.TODO(),
 		node.Name,
 		types.MergePatchType,
 		[]byte(`{"spec":{"unschedulable":true}}`),
 		metav1.PatchOptions{},
-	)
+	); err != nil {
+		return fmt.Errorf("couldn't patch node %s: %w", node.Name, err)
+	}
 
-	return fmt.Errorf("couldn't patch node %s: %w", node.Name, err)
+	return nil
 }
 
 const k8sLabelsSplit = 2
@@ -316,16 +346,22 @@ nodesIteration:
 type app struct {
 	config config
 	client *kubernetes.Clientset
-	log    zap.SugaredLogger
+	log    *zap.SugaredLogger
 }
 
 func (app *app) initLogging() error {
-	logger, err := zap.NewDevelopment()
-	if err == nil {
-		app.log = *logger.Sugar()
+	config := zap.NewDevelopmentConfig()
+	config.Development = false
+	config.DisableCaller = true
+	logger, err := config.Build()
+
+	if err != nil {
+		return fmt.Errorf("couldn't init logging: %w", err)
 	}
 
-	return fmt.Errorf("couldn't init logging: %w", err)
+	app.log = logger.Sugar()
+
+	return nil
 }
 
 func (app *app) initClient() error {
