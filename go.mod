@@ -1,6 +1,6 @@
 module github.com/habx/k8s-nodes-cleaner
 
-go 1.17
+go 1.19
 
 require (
 	go.uber.org/zap v1.19.0
