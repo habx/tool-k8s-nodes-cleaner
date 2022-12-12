@@ -2,3 +2,4 @@
 __*
 tool-*
 .DS_Store
+k8s-node-cleaner
