@@ -1,10 +1,10 @@
 ---
-project_name: tool-k8s-node-cleaner
+project_name: k8s-node-cleaner
 
 release:
   github:
     owner: habx
-    name: tool-devops-db-dev-access
+    name: k8s-nodes-cleaner
 
 builds:
   - binary: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
