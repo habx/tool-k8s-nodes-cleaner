@@ -1,5 +1,5 @@
 ---
-project_name: k8s-node-cleaner
+project_name: k8s-nodes-cleaner
 
 release:
   github:
